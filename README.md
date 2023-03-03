@@ -1,6 +1,8 @@
 # StompControl4_FW
 Replacement firmware for the Harley Benton StompControl-4 pedal loop switcher
 
+![alt text](https://github.com/ignaciodsimon/StompControl4_FW/raw/main/reverse%20engineering%20the%20board/switcher%20working%20with%20new%20firmware.jpg)
+
 ## Description
 
 This is a (fully written from scratch) replacement firmware for the pedal switcher sold by Thomann under the brand Harley Benton (this is a OEM product manufactured by Vitoos, so it's probably found under other brand names). The source code is completely original (not obtained from the manufacturer in any way), thus there are no intellectual property rights protecting it. You are welcome to use it, modify it, etc, as the license document specifies.
@@ -30,6 +32,13 @@ This firmware was developed after using the switcher unmodified for a little whi
 - all loops are disengaged when in "tuner" mode, for the quietest output while tuning up
 - current preset indicator blinks while in tuner mode, to indicate which preset will be recalled after pressing "tuner" again
 - the "tuner" mode can be exited also by pressing a preset footswitch
+
+# New firmware design
+
+![alt text](https://raw.githubusercontent.com/ignaciodsimon/StompControl4_FW/main/new%20UI%20specification/new%20UI.jpg)
+
+![alt text](https://github.com/ignaciodsimon/StompControl4_FW/raw/main/new%20UI%20specification/state_machine_v0.3.jpg)
+
 
 # Technical specifications
 
