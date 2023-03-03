@@ -1,0 +1,745 @@
+C51 COMPILER V9.60.7.0   NEWUI                                                             03/03/2023 11:46:21 PAGE 1   
+
+
+C51 COMPILER V9.60.7.0, COMPILATION OF MODULE NEWUI
+OBJECT MODULE PLACED IN .\Objects\newUI.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE newUI.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\new
+                    -UI.lst) TABS(5) OBJECT(.\Objects\newUI.obj)
+
+line level    source
+
+   1          /*
+   2              Features
+   3              ========
+   4          
+   5          
+   6                  [x] minimum features
+   7                      [x] basic persistency
+   8                      [x] full UI usability with one bank
+   9          
+  10                  [x] display version string at boot
+  11          
+  12                  [-] display "edit" when editing a preset
+  13                                        Tried this but didn't look very good
+  14          
+  15                  [ ] improve persistency (rotating EEPROM)
+  16          
+  17                    [x] refactor to include multiple banks
+  18                              The button "Store" advances banks when
+  19                              on play mode. There are 10 banks, so
+  20                              a total of 50 presets can be stored.
+  21          
+  22                    [x] "simple" mode (each FS drives a loop)
+  23          
+  24                    [-] try disabling restoreLastUsedBankAndPresetFromEEPROM()
+  25                              to see if the old method of "non-volatile ram"
+  26                              can be used.
+  27                              Tried this and it doesn't seem to work, they
+  28                              are still zeroed-out at boot.
+  29          
+  30                    [x] implement the "hold for 1 second" for
+  31                              momentary operation, which rolls back to the
+  32                              last preset after releasing the footswitch.
+  33                    
+  34                    [ ] implement up to 20 banks (use the dot on the 7-segment
+  35                              display to indicate whether it's in banks 0-9
+  36                              or 10-19.
+  37                              
+  38                    [ ] implement "exclusive simple" mode, where the loops are
+  39                         toggled as if it was a "solo" mode (when a loop is engaged
+  40                         the rest as automatically turned off). This is useful
+  41                         for comparing effects, for example.
+  42                         NOTE: this can actually be done with programming as well.
+  43          
+  44                    [x] implement "blinking of 7-segment" while on "momentary"
+  45                         mode, to let the user know that as soon as he releases
+  46                         the footswitch, the pedalboard is going back to the previous
+  47                         preset. Note: done using the "dot" in the 7-segment display,
+  48                         instead of on the number, which didn't seem to make as
+  49                         much sense (since it has nothing to do with the bank).
+  50          
+  51                    [x] turn off all relays while in tuner mode.
+  52          
+  53                    [x] reverse the logic of the EEPROM so that empty banks are by
+  54                         default set to all-relays-off, instead of all-relays-on.
+C51 COMPILER V9.60.7.0   NEWUI                                                             03/03/2023 11:46:21 PAGE 2   
+
+  55          
+  56          
+  57          
+  58              i/o definitions
+  59              ===============
+  60          
+  61              PIN     i/o       Description
+  62              -----------------------------
+  63          
+  64              P2.3    input     Relay 0 engages the loop 0.
+  65              P2.2    input     Relay 1 engages the loop 1.
+  66              P2.1    input     Relay 2 engages the loop 2.
+  67              P2.0    input     Relay 3 engages the loop 3.
+  68              P4.4    input     Relay 4 engages the "MUTE" for the tuner output.
+  69          
+  70              P1.2    input     FS tuner
+  71              P4.6    input     FS preset-0
+  72              P4.1    input     FS preset-1
+  73              P4.5    input     FS preset-2
+  74              P1.0    input     FS preset-3
+  75              P1.1    input     FS preset-4
+  76          
+  77              P1.7    input     Edit
+  78              P1.6    input     Store
+  79          
+  80              n/c     output    LED FS tuner
+  81              P3.3    output    LED FS preset-0
+  82              P3.4    output    LED FS preset-1
+  83              P3.5    output    LED FS preset-2
+  84              P3.6    output    LED FS preset-3
+  85              P3.7    output    LED FS preset-4
+  86          
+  87              P0.0    output    7-segment
+  88              P0.1    output    7-segment
+  89              P0.2    output    7-segment
+  90              P0.3    output    7-segment
+  91              P0.4    output    7-segment
+  92              P0.5    output    7-segment
+  93              P0.6    output    7-segment
+  94              P0.7    output    7-segment
+  95          */
+  96          
+  97          
+  98          #include "mcu_definitions.h"
+  99          //#include "uart.h"
+ 100          #include "eeprom.h"
+ 101          
+ 102          /*
+ 103              The logic on the Relays and the 7-segment display is reversed (a zero turns it on).
+ 104              The logic on the footswitch LEDs is not reversed.
+ 105              The logic on the Edit and Store buttons is reversed.
+ 106          */
+ 107          
+ 108          #define PIN_RELAY_0 P23
+ 109          #define PIN_RELAY_1 P22
+ 110          #define PIN_RELAY_2 P21
+ 111          #define PIN_RELAY_3 P20
+ 112          #define PIN_RELAY_4 P44
+ 113          
+ 114          #define PIN_LED_FS_1 P33
+ 115          #define PIN_LED_FS_2 P34
+ 116          #define PIN_LED_FS_3 P35
+C51 COMPILER V9.60.7.0   NEWUI                                                             03/03/2023 11:46:21 PAGE 3   
+
+ 117          #define PIN_LED_FS_4 P36
+ 118          #define PIN_LED_FS_5 P37
+ 119          
+ 120          #define PIN_BUTTON_EDIT P17
+ 121          #define PIN_BUTTON_STORE P16
+ 122          
+ 123          #define PIN_BUTTON_FS0 P12
+ 124          #define PIN_BUTTON_FS1 P46
+ 125          #define PIN_BUTTON_FS2 P41
+ 126          #define PIN_BUTTON_FS3 P45
+ 127          #define PIN_BUTTON_FS4 P10
+ 128          #define PIN_BUTTON_FS5 P11
+ 129          
+ 130          // --
+ 131          
+ 132          #define BANKS_COUNT 10
+ 133          #define PRESETS_PER_BANK 5
+ 134          #define LOOP_RELAYS_COUNT 4
+ 135          
+ 136          #define STATE_TUNER 0
+ 137          #define STATE_EDIT  1
+ 138          #define STATE_PLAY  2
+ 139          
+ 140          #define EVENT_INVALID -1
+ 141          #define EVENT_FS_0     0
+ 142          #define EVENT_FS_1     1
+ 143          #define EVENT_FS_2     2
+ 144          #define EVENT_FS_3     3
+ 145          #define EVENT_FS_4     4
+ 146          #define EVENT_EDIT     5
+ 147          #define EVENT_STORE    6
+ 148          #define EVENT_TUNER    7
+ 149          
+ 150          #define RELAY_INDEX_LOOP_0 0
+ 151          #define RELAY_INDEX_LOOP_1 1
+ 152          #define RELAY_INDEX_LOOP_2 2
+ 153          #define RELAY_INDEX_LOOP_3 3
+ 154          #define RELAY_INDEX_MUTE 4
+ 155          
+ 156          typedef unsigned char UBYTE;
+ 157          
+ 158          #define VERSION_STRING "0.5"
+ 159          const unsigned char SEGMENT_DISPLAY_DIGITS[] = {127, 192, 249, 164, 176, 153, 146, 130, 248, 128, 144};
+ 160          
+ 161          
+ 162          // ---- Global variables -----------------------------------------
+ 163          
+ 164          // Using this, all loops are turned off during tuning mode. The disadvantage is that
+ 165          // the user won't be able to see the loops that belong to that preset before going
+ 166          // out of the mute state
+ 167          #define TURN_OFF_LOOPS_DURING_TUNING
+ 168          
+ 169          volatile UBYTE _shouldBlinkSegmentDisplay = 0;
+ 170          
+ 171          // Either EDIT, PLAY or TUNER
+ 172          volatile UBYTE _currentState;
+ 173          
+ 174          // An index between 0 and PRESETS_PER_BANK-1
+ 175          volatile UBYTE _currentPresetIndex;
+ 176          volatile UBYTE _currentBankIndex;
+ 177          volatile UBYTE _previousPresetIndex;
+ 178          
+C51 COMPILER V9.60.7.0   NEWUI                                                             03/03/2023 11:46:21 PAGE 4   
+
+ 179          // The actual array containing all the presets
+ 180          volatile UBYTE _bankPresets[BANKS_COUNT][PRESETS_PER_BANK];
+ 181          
+ 182          
+ 183          // ---- Functions ------------------------------------------------
+ 184          
+ 185          
+ 186          void delay100ms() // Approximate only
+ 187          {
+ 188   1          unsigned char i, j, k;
+ 189   1          i = 2;
+ 190   1          j = 43;
+ 191   1          k = 207;
+ 192   1          do
+ 193   1          {
+ 194   2              do
+ 195   2              {
+ 196   3                  while (--k);
+ 197   3              } while (--j);
+ 198   2          } while (--i);
+ 199   1      }
+ 200          
+ 201          void set7SegmentDisplay(UBYTE segments)
+ 202          {
+ 203   1          P0 = segments;
+ 204   1      }
+ 205          
+ 206          void clearSegmentDisplay(void)
+ 207          {
+ 208   1           P0 = 0xFF;
+ 209   1      }
+ 210          
+ 211          void set7SegmentDisplayDot(UBYTE dotState)
+ 212          {
+ 213   1           P0 = (P0 & 0x7F) | ((!dotState) << 7);
+ 214   1      }
+ 215          
+ 216          void displayVersion(void)
+ 217          {
+ 218   1           UBYTE i, j;
+ 219   1           for (i = 0; i < sizeof(VERSION_STRING / sizeof(char)); i++)
+ 220   1           {
+ 221   2                if (VERSION_STRING[i] != '.' && (VERSION_STRING[i] < 48 || VERSION_STRING[i] > 57))
+ 222   2                {
+ 223   3                     continue;
+ 224   3                }
+ 225   2      
+ 226   2                if (VERSION_STRING[i] == '.')
+ 227   2                {
+ 228   3                     set7SegmentDisplay(SEGMENT_DISPLAY_DIGITS[0]);
+ 229   3                }
+ 230   2                else
+ 231   2                {
+ 232   3                     set7SegmentDisplay(SEGMENT_DISPLAY_DIGITS[VERSION_STRING[i] - 48 + 1]);
+ 233   3                }
+ 234   2                
+ 235   2                for (j = 0; j < 5; j++)
+ 236   2                {
+ 237   3                     delay100ms();
+ 238   3                }
+ 239   2                clearSegmentDisplay();
+ 240   2                delay100ms();
+C51 COMPILER V9.60.7.0   NEWUI                                                             03/03/2023 11:46:21 PAGE 5   
+
+ 241   2           }
+ 242   1      }
+ 243          
+ 244          // Save the presets in RAM to the non-volatile storage
+ 245          void storePresetsInRAMtoEEPROM(void)
+ 246          {
+ 247   1          UBYTE bank, preset;
+ 248   1      
+ 249   1          // Naive solution: clear page and write all values as new
+ 250   1          IapEraseSector(IAP_ADDRESS);
+ 251   1          delay100ms();
+ 252   1          for (bank = 0; bank < BANKS_COUNT; bank++)
+ 253   1                {
+ 254   2                     for (preset = 0; preset < PRESETS_PER_BANK; preset++)
+ 255   2                     {
+ 256   3                               IapProgramByte(IAP_ADDRESS + preset + (bank * PRESETS_PER_BANK), ~_bankPresets[bank][preset]);
+ 257   3                     }
+ 258   2                }
+ 259   1      }
+ 260          
+ 261          // Read the contents of the non-voltatile storage and set them to RAM
+ 262          void restorePresetsFromEEPROMtoRAM(void)
+ 263          {
+ 264   1          // NOTE: Each preset is a byte, where the lower 4 bits are the 
+ 265   1          // setting of the relays (which loops are turned on / off)
+ 266   1      
+ 267   1          UBYTE preset, bank;
+ 268   1          for (bank = 0; bank < BANKS_COUNT; bank++)
+ 269   1                {
+ 270   2                     for (preset = 0; preset < PRESETS_PER_BANK; preset++)
+ 271   2                     {
+ 272   3                               _bankPresets[bank][preset] = ~IapReadByte(IAP_ADDRESS + preset + (bank * PRESETS_PER_BANK));
+ 273   3                     }
+ 274   2                }
+ 275   1      }
+ 276          
+ 277          void restoreLastUsedBankAndPresetFromEEPROM(void)
+ 278          {
+ 279   1          // TODO: what is the best way to recall the bank/preset without writting to 
+ 280   1                // the eeprom every single time ... ? is there a brown-out detection?
+ 281   1          _currentPresetIndex = 0;
+ 282   1          _currentBankIndex = 0;
+ 283   1                _previousPresetIndex = 0;
+ 284   1      }
+ 285          
+ 286          void storeLastUsedBankAndPresetToEEPROM(void)
+ 287          {
+ 288   1          // TODO: complete this ...
+ 289   1          // EEPROM <--- _currentPresetIndex
+ 290   1      }
+ 291          
+ 292          void setRelay(UBYTE relayIndex, UBYTE relayState)
+ 293          {
+ 294   1          // The logic of the relays is reversed
+ 295   1          relayState = relayState == 0 ? 1 : 0;
+ 296   1          if (relayIndex == 0)
+ 297   1          {
+ 298   2              PIN_RELAY_0 = relayState;
+ 299   2          }
+ 300   1          else if (relayIndex == 1)
+ 301   1          {
+ 302   2              PIN_RELAY_1 = relayState;
+C51 COMPILER V9.60.7.0   NEWUI                                                             03/03/2023 11:46:21 PAGE 6   
+
+ 303   2          }
+ 304   1          else if (relayIndex == 2)
+ 305   1          {
+ 306   2              PIN_RELAY_2 = relayState;
+ 307   2          }
+ 308   1          else if (relayIndex == 3)
+ 309   1          {
+ 310   2              PIN_RELAY_3 = relayState;
+ 311   2          }
+ 312   1          else if (relayIndex == 4)
+ 313   1          {
+ 314   2              PIN_RELAY_4 = relayState;
+ 315   2          }
+ 316   1      }
+ 317          
+ 318          void setFS_LED(UBYTE LEDIndex, UBYTE LEDstate)
+ 319          {
+ 320   1          if (LEDstate < 0 || LEDstate >= PRESETS_PER_BANK)
+ 321   1          {
+ 322   2              return;
+ 323   2          }
+ 324   1      
+ 325   1          if (LEDIndex == 0)
+ 326   1          {
+ 327   2              PIN_LED_FS_1 = LEDstate;
+ 328   2          }
+ 329   1          else if (LEDIndex == 1)
+ 330   1          {
+ 331   2              PIN_LED_FS_2 = LEDstate;
+ 332   2          }
+ 333   1          else if (LEDIndex == 2)
+ 334   1          {
+ 335   2              PIN_LED_FS_3 = LEDstate;
+ 336   2          }
+ 337   1          else if (LEDIndex == 3)
+ 338   1          {
+ 339   2              PIN_LED_FS_4 = LEDstate;
+ 340   2          }
+ 341   1          else if (LEDIndex == 4)
+ 342   1          {
+ 343   2              PIN_LED_FS_5 = LEDstate;
+ 344   2          }
+ 345   1      }
+ 346          
+ 347          void recallPreset(UBYTE presetIndex)
+ 348          {
+ 349   1          UBYTE i;
+ 350   1      
+ 351   1          if (presetIndex < 0)
+ 352   1          {
+ 353   2              presetIndex = 0;
+ 354   2          }
+ 355   1          else if (presetIndex >= PRESETS_PER_BANK)
+ 356   1          {
+ 357   2              presetIndex = PRESETS_PER_BANK - 1;
+ 358   2          }
+ 359   1      
+ 360   1          _currentPresetIndex = presetIndex;
+ 361   1      
+ 362   1          for (i = 0; i < LOOP_RELAYS_COUNT; i++)
+ 363   1          {
+ 364   2              setRelay(RELAY_INDEX_LOOP_0 + i, (_bankPresets[_currentBankIndex][presetIndex] & (1 << i)) >> i);
+C51 COMPILER V9.60.7.0   NEWUI                                                             03/03/2023 11:46:21 PAGE 7   
+
+ 365   2          }
+ 366   1      }
+ 367          
+ 368          void setMuteRelay(UBYTE state)
+ 369          {
+ 370   1          setRelay(RELAY_INDEX_MUTE, state);
+ 371   1      }
+ 372          
+ 373          UBYTE areAnyButtonsPushed(void)
+ 374          {
+ 375   1           if      (!PIN_BUTTON_EDIT)  { return EVENT_EDIT;  }
+ 376   1           else if (!PIN_BUTTON_STORE) { return EVENT_STORE; }
+ 377   1           else if (!PIN_BUTTON_FS0)   { return EVENT_TUNER;  }
+ 378   1           else if (!PIN_BUTTON_FS1)   { return EVENT_FS_0;  }
+ 379   1           else if (!PIN_BUTTON_FS2)   { return EVENT_FS_1;  }
+ 380   1           else if (!PIN_BUTTON_FS3)   { return EVENT_FS_2;  }
+ 381   1           else if (!PIN_BUTTON_FS4)   { return EVENT_FS_3;  }
+ 382   1           else if (!PIN_BUTTON_FS5)   { return EVENT_FS_4;  }
+ 383   1      
+ 384   1           return -1;
+ 385   1      }
+ 386          
+ 387          UBYTE waitForEvent(void)
+ 388          {
+ 389   1          UBYTE event = EVENT_INVALID;
+ 390   1      
+ 391   1         while(1)
+ 392   1         {
+ 393   2           event = areAnyButtonsPushed();
+ 394   2           if (event != -1)
+ 395   2           {
+ 396   3                return event;
+ 397   3           }
+ 398   2         }
+ 399   1      }
+ 400          
+ 401          void waitForAllButtonsRelease(void)
+ 402          {
+ 403   1          // Initial delay to make sure the pins are stable before checking
+ 404   1          delay100ms();
+ 405   1      
+ 406   1          // While any button is pressed, wait for a about 100 ms
+ 407   1          while (areAnyButtonsPushed() != -1)
+ 408   1          {
+ 409   2              delay100ms();
+ 410   2          }
+ 411   1      }
+ 412          
+ 413          void setBank(UBYTE bankIndex)
+ 414          {
+ 415   1           if (bankIndex < 0 || bankIndex >= BANKS_COUNT)
+ 416   1           {
+ 417   2                bankIndex = 0;
+ 418   2           }
+ 419   1           _currentBankIndex = bankIndex;
+ 420   1           set7SegmentDisplay(SEGMENT_DISPLAY_DIGITS[_currentBankIndex + 1]);
+ 421   1      }
+ 422          
+ 423          void mainLoop(void)
+ 424          {
+ 425   1          UBYTE event, i;
+ 426   1      
+C51 COMPILER V9.60.7.0   NEWUI                                                             03/03/2023 11:46:21 PAGE 8   
+
+ 427   1          // Should only break out from this loop if an unrecoverable error
+ 428   1          // happens. Returning from this function will trigger a software reboot.
+ 429   1          while(1)
+ 430   1          {
+ 431   2              waitForAllButtonsRelease();
+ 432   2              event = waitForEvent();
+ 433   2      
+ 434   2              if (_currentState == STATE_TUNER)
+ 435   2              {
+ 436   3                     // ------- START "TUNER" ----------------------------------------------------------------
+ 437   3                  if (event == EVENT_TUNER)
+ 438   3                  {
+ 439   4                      // Recall the current preset (no changes), un-mute and leave tuner mode
+ 440   4                      recallPreset(_currentPresetIndex);
+ 441   4                      setMuteRelay(0);
+ 442   4                      _currentState = STATE_PLAY;
+ 443   4                  }
+ 444   3                  else if (event >= EVENT_FS_0 && event <= EVENT_FS_4)
+ 445   3                  {
+ 446   4                      // Go to the selected preset, un-mute and leave tuner mode
+ 447   4                      recallPreset(event);
+ 448   4                      setMuteRelay(0);
+ 449   4                      _currentState = STATE_PLAY;
+ 450   4                  }
+ 451   3                      // ------- END "TUNER" ----------------------------------------------------------------
+ 452   3              }
+ 453   2              else if (_currentState == STATE_EDIT)
+ 454   2              {
+ 455   3                  // ------- START "EDIT" ----------------------------------------------------------------
+ 456   3                  if (event == EVENT_STORE)
+ 457   3                  {
+ 458   4                      // Store current preset to EEPROM and go back to play mode
+ 459   4                      storePresetsInRAMtoEEPROM();
+ 460   4                      _currentState = STATE_PLAY;
+ 461   4                      recallPreset(_currentPresetIndex);
+ 462   4                  }
+ 463   3                  else if (event == EVENT_EDIT)
+ 464   3                  {
+ 465   4                      // Recall the current preset from EEPROM, so "discard changes"
+ 466   4                      restorePresetsFromEEPROMtoRAM();
+ 467   4                  }
+ 468   3                  else if (event >= EVENT_FS_0 && event <= EVENT_FS_4)
+ 469   3                  {
+ 470   4                      // Edit this preset with the corresponding "loop relay" change
+ 471   4                      // (toggle the "n-th" bit according to the event)
+ 472   4                      _bankPresets[_currentBankIndex][_currentPresetIndex] ^= 1UL << event;
+ 473   4                      recallPreset(_currentPresetIndex);
+ 474   4                  }
+ 475   3                      // ------- END "EDIT" ------------------------------------------------------------------
+ 476   3              }
+ 477   2              else if (_currentState == STATE_PLAY)
+ 478   2              {
+ 479   3                // ------- START "PLAY" ----------------------------------------------------------------
+ 480   3                  if (event == EVENT_TUNER)
+ 481   3                  {
+ 482   4                     // Enter tuner mode
+ 483   4                     setMuteRelay(1);
+ 484   4      
+ 485   4      #ifdef TURN_OFF_LOOPS_DURING_TUNING
+ 486   4                     // Turn off all loops for quieter output during mute state
+ 487   4                     for(i = 0; i < LOOP_RELAYS_COUNT; i++)
+ 488   4                     {
+C51 COMPILER V9.60.7.0   NEWUI                                                             03/03/2023 11:46:21 PAGE 9   
+
+ 489   5                          setRelay(i, 0);
+ 490   5                     }
+ 491   4      #endif
+ 492   4                     _currentState = STATE_TUNER;
+ 493   4      
+ 494   4                  }
+ 495   3                  else if (event >= EVENT_FS_0 && event <= EVENT_FS_4)
+ 496   3                  {
+ 497   4                     if (_currentPresetIndex == event)
+ 498   4                     {
+ 499   5                          // It's the same preset, nothing else to do
+ 500   5                     }
+ 501   4                     else
+ 502   4                     {
+ 503   5                          // Keep a copy of the preset we're about to leave, in case we need to return to it
+ 504   5                          _previousPresetIndex = _currentPresetIndex;
+ 505   5                          _currentPresetIndex = event;
+ 506   5      
+ 507   5                          // Go to the new preset
+ 508   5                          recallPreset(_currentPresetIndex);
+ 509   5                          storeLastUsedBankAndPresetToEEPROM();
+ 510   5      
+ 511   5                          // Is the FS being held down?
+ 512   5                          for(i = 0; i < 10; i++)
+ 513   5                          {
+ 514   6                               delay100ms();
+ 515   6                               delay100ms();
+ 516   6                               if(areAnyButtonsPushed() != _currentPresetIndex)
+ 517   6                               {
+ 518   7                                    break;
+ 519   7                               }
+ 520   6                          }
+ 521   5                          if (i == 10)
+ 522   5                          {
+ 523   6                               // Footswitch is being held down, wait for its release and switch back
+ 524   6                               // to the last preset
+ 525   6                               _shouldBlinkSegmentDisplay = 1;
+ 526   6                               waitForAllButtonsRelease();
+ 527   6                               _currentPresetIndex = _previousPresetIndex;
+ 528   6                               recallPreset(_currentPresetIndex);
+ 529   6                               storeLastUsedBankAndPresetToEEPROM();
+ 530   6                               _shouldBlinkSegmentDisplay = 0;
+ 531   6                          }
+ 532   5                     }
+ 533   4                  }
+ 534   3                  else if (event == EVENT_EDIT)
+ 535   3                  {
+ 536   4                      _currentState = STATE_EDIT;
+ 537   4                  }
+ 538   3                                    else if (event == EVENT_STORE)
+ 539   3                                    {
+ 540   4                                         _currentBankIndex++;
+ 541   4                                         if (_currentBankIndex >= BANKS_COUNT)
+ 542   4                                         {
+ 543   5                                              _currentBankIndex = 0;
+ 544   5                                         }
+ 545   4                                         setBank(_currentBankIndex);
+ 546   4                                         recallPreset(_currentPresetIndex);
+ 547   4                                    }
+ 548   3              }
+ 549   2          }
+ 550   1      }
+C51 COMPILER V9.60.7.0   NEWUI                                                             03/03/2023 11:46:21 PAGE 10  
+
+ 551          
+ 552          volatile UBYTE _blinkingState = 0;
+ 553          
+ 554          UBYTE checkSimpleMode(void)
+ 555          {
+ 556   1          // If "Edit" and "Store" are held down during boot, it boots to "simple" mode, without programs
+ 557   1          // where each FS controls a loop
+ 558   1          delay100ms();
+ 559   1          if (!PIN_BUTTON_EDIT && !PIN_BUTTON_STORE)
+ 560   1          {
+ 561   2              return 1;
+ 562   2          }
+ 563   1          return 0;
+ 564   1      }
+ 565          
+ 566          void enterSimpleMode(void)
+ 567          {
+ 568   1          UBYTE event;
+ 569   1          UBYTE i;
+ 570   1          volatile UBYTE loops[LOOP_RELAYS_COUNT];
+ 571   1          volatile UBYTE tunerStatus = 1;
+ 572   1      
+ 573   1          // Display "S" on the 7-segment
+ 574   1          // set7SegmentDisplay(0x92); // 0b10010010
+ 575   1      
+ 576   1          // Set all loops OFF
+ 577   1          for (i = 0; i < LOOP_RELAYS_COUNT; i++)
+ 578   1          {
+ 579   2              loops[i] = 0;
+ 580   2              setRelay(i, 0);
+ 581   2                          setFS_LED(i, 0);
+ 582   2          }
+ 583   1                setFS_LED(i, 0);
+ 584   1      
+ 585   1          // Simple mode
+ 586   1          while(1)
+ 587   1          {
+ 588   2              waitForAllButtonsRelease();
+ 589   2              event = waitForEvent();
+ 590   2              switch(event)
+ 591   2              {
+ 592   3              case EVENT_FS_0:
+ 593   3              case EVENT_FS_1:
+ 594   3              case EVENT_FS_2:
+ 595   3              case EVENT_FS_3:
+ 596   3                  loops[event] = !loops[event];
+ 597   3                  setRelay(event, loops[event]);
+ 598   3                                    setFS_LED(event, loops[event]);
+ 599   3                  break;
+ 600   3      
+ 601   3              case EVENT_TUNER:
+ 602   3                                    tunerStatus = tunerStatus == 0 ? 1 : 0;
+ 603   3                  setMuteRelay(tunerStatus);
+ 604   3                  break;
+ 605   3      
+ 606   3              default:
+ 607   3                  break;
+ 608   3      
+ 609   3              }
+ 610   2          }
+ 611   1      }
+ 612          
+C51 COMPILER V9.60.7.0   NEWUI                                                             03/03/2023 11:46:21 PAGE 11  
+
+ 613          volatile unsigned int _timerCounter = 0;
+ 614          void tm0_isr() interrupt 1
+ 615          {
+ 616   1           UBYTE i;
+ 617   1           TL0 = 0xFFFF;
+ 618   1           TH0 = 0xFFFF;
+ 619   1      
+ 620   1           _timerCounter++;
+ 621   1           if (_timerCounter == 1000)
+ 622   1           {
+ 623   2                _timerCounter = 0;
+ 624   2                _blinkingState = _blinkingState == 0 ? 1 : 0;
+ 625   2      
+ 626   2                // The dot in the 7-segment display can be blinking (during "momentary mode") or off
+ 627   2                set7SegmentDisplayDot(_shouldBlinkSegmentDisplay && _blinkingState);
+ 628   2      
+ 629   2                // If it's in EDIT or TUNER mode, blink the selected preset
+ 630   2                for(i = 0; i < PRESETS_PER_BANK; i++)
+ 631   2                {
+ 632   3                     if (_currentState == STATE_TUNER || _currentState == STATE_EDIT)
+ 633   3                     {
+ 634   4                          setFS_LED(i, _blinkingState && (i == _currentPresetIndex));
+ 635   4                     }
+ 636   3                     else if (_currentState == STATE_PLAY)
+ 637   3                     {
+ 638   4                          setFS_LED(i, (i == _currentPresetIndex));
+ 639   4                     }
+ 640   3                }
+ 641   2           }
+ 642   1      }
+ 643          
+ 644          void setupTimer(void)
+ 645          {
+ 646   1                // Set up the timer 
+ 647   1          TMOD = 0x01; // set timer0 as mode1 (16-bit)
+ 648   1          TL0 = 0xFF;  // initial timer0 low byte
+ 649   1          TH0 = 0xFF;  // initial timer0 high byte
+ 650   1          TR0 = 1;     // timer0 start running
+ 651   1          ET0 = 1;     // enable timer0 interrupt
+ 652   1          EA = 1;      // open global interrupt switch
+ 653   1      }
+ 654          
+ 655          // This is called when the CPU is ready to run, to set up all necessary
+ 656          // i/o stuff and other things
+ 657          void startup(void)
+ 658          {
+ 659   1      #ifdef TURN_OFF_LOOPS_DURING_TUNING
+ 660   1           UBYTE i;
+ 661   1      #endif
+ 662   1           
+ 663   1           setMuteRelay(1);
+ 664   1           displayVersion();
+ 665   1           if (checkSimpleMode())
+ 666   1           {
+ 667   2                enterSimpleMode();
+ 668   2           }
+ 669   1           setupTimer();
+ 670   1           restorePresetsFromEEPROMtoRAM();
+ 671   1           restoreLastUsedBankAndPresetFromEEPROM();
+ 672   1           setBank(_currentBankIndex);
+ 673   1           recallPreset(_currentPresetIndex);
+ 674   1      
+C51 COMPILER V9.60.7.0   NEWUI                                                             03/03/2023 11:46:21 PAGE 12  
+
+ 675   1      #ifdef TURN_OFF_LOOPS_DURING_TUNING
+ 676   1           // Turn off all loops for quieter output during mute state
+ 677   1           for(i = 0; i < LOOP_RELAYS_COUNT; i++)
+ 678   1           {
+ 679   2                setRelay(i, 0);
+ 680   2           }
+ 681   1      #endif
+ 682   1      
+ 683   1           _currentState = STATE_TUNER;
+ 684   1      }
+ 685          
+ 686          // ------------------------------------------------------------------
+ 687          
+ 688          void mainUI(void)
+ 689          {
+ 690   1          while(1)
+ 691   1          {
+ 692   2              startup();
+ 693   2              mainLoop();
+ 694   2      
+ 695   2              // It should not reach here, and if it happens, restart
+ 696   2              // by running the startup sequence again and hope it all
+ 697   2              // goes back to work.
+ 698   2          }
+ 699   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1215    ----
+   CONSTANT SIZE    =      4    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     69      11
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

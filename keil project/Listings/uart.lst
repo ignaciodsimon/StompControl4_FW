@@ -1,0 +1,110 @@
+C51 COMPILER V9.60.7.0   UART                                                              03/03/2023 11:46:23 PAGE 1   
+
+
+C51 COMPILER V9.60.7.0, COMPILATION OF MODULE UART
+OBJECT MODULE PLACED IN .\Objects\uart.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE uart.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\uart
+                    -.lst) TABS(5) OBJECT(.\Objects\uart.obj)
+
+line level    source
+
+   1          #include "uart.h"
+   2          
+   3          sbit bit9 = P2^2;           //P2.2 show UART data bit9
+   4          bit busy;
+   5          
+   6          
+   7          void startUART()
+   8          {
+   9   1      #if (PARITYBIT == NONE_PARITY)
+  10   1          SCON = 0x50;            //8-bit variable UART
+  11   1      #elif (PARITYBIT == ODD_PARITY) || (PARITYBIT == EVEN_PARITY) || (PARITYBIT == MARK_PARITY)
+                  SCON = 0xda;            //9-bit variable UART, parity bit initial to 1
+              #elif (PARITYBIT == SPACE_PARITY)
+                  SCON = 0xd2;            //9-bit variable UART, parity bit initial to 0
+              #endif
+  16   1      
+  17   1          TMOD = 0x20;            //Set Timer1 as 8-bit auto reload mode
+  18   1          TH1 = TL1 = -(FOSC/12/32/BAUD); //Set auto-reload vaule
+  19   1          TR1 = 1;                //Timer1 start run
+  20   1          ES = 1;                 //Enable UART interrupt
+  21   1          EA = 1;                 //Open master interrupt switch
+  22   1      
+  23   1      }
+  24          
+  25          
+  26          /*----------------------------
+  27          UART interrupt service routine
+  28          ----------------------------*/
+  29          void Uart_Isr() interrupt 4
+  30          {
+  31   1          if (RI)
+  32   1          {
+  33   2              RI = 0;             //Clear receive interrupt flag
+  34   2              P0 = SBUF;          //P0 show UART data
+  35   2              bit9 = RB8;         //P2.2 show parity bit
+  36   2          }
+  37   1          if (TI)
+  38   1          {
+  39   2              TI = 0;             //Clear transmit interrupt flag
+  40   2              busy = 0;           //Clear transmit busy flag
+  41   2          }
+  42   1      }
+  43          
+  44          /*----------------------------
+  45          Send a byte data to UART
+  46          Input: dat (data to be sent)
+  47          Output:None
+  48          ----------------------------*/
+  49          void SendData(BYTE dat)
+  50          {
+  51   1          while (busy);           //Wait for the completion of the previous data is sent
+  52   1          ACC = dat;              //Calculate the even parity bit P (PSW.0)
+  53   1          if (P)                  //Set the parity bit according to P
+  54   1          {
+C51 COMPILER V9.60.7.0   UART                                                              03/03/2023 11:46:23 PAGE 2   
+
+  55   2      #if (PARITYBIT == ODD_PARITY)
+                      TB8 = 0;            //Set parity bit to 0
+              #elif (PARITYBIT == EVEN_PARITY)
+                      TB8 = 1;            //Set parity bit to 1
+              #endif
+  60   2          }
+  61   1          else
+  62   1          {
+  63   2      #if (PARITYBIT == ODD_PARITY)
+                      TB8 = 1;            //Set parity bit to 1
+              #elif (PARITYBIT == EVEN_PARITY)
+                      TB8 = 0;            //Set parity bit to 0
+              #endif
+  68   2          }
+  69   1          busy = 1;
+  70   1          SBUF = ACC;             //Send data to UART buffer
+  71   1      }
+  72          
+  73          /*----------------------------
+  74          Send a string to UART
+  75          Input: s (address of string)
+  76          Output:None
+  77          ----------------------------*/
+  78          void SendString(char *s)
+  79          {
+  80   1          while (*s)              //Check the end of the string
+  81   1          {
+  82   2              SendData(*s++);     //Send current char and increment string ptr
+  83   2          }
+  84   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     89    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----       3
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      1    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

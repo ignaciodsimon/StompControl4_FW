@@ -1,0 +1,36 @@
+C51 COMPILER V9.60.7.0   MAIN                                                              03/03/2023 11:46:20 PAGE 1   
+
+
+C51 COMPILER V9.60.7.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\main
+                    -.lst) TABS(5) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include "uart.h"
+   2          #include "mcu_definitions.h"
+   3          
+   4          void mainUI(void);
+   5          
+   6          void main(void)
+   7          {
+   8   1                // This is needed for the "tuner" relay to work
+   9   1                P4SW = 0x70;
+  10   1           
+  11   1                mainUI(); 
+  12   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =      6    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

@@ -1,0 +1,7 @@
+".\Objects\STARTUP.obj",
+".\Objects\main.obj",
+".\Objects\newUI.obj",
+".\Objects\uart.obj",
+".\Objects\eeprom.obj" 
+TO ".\Objects\newFW" 
+PRINT(".\Listings\newFW.m51") RAMSIZE(256) 
